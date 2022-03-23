@@ -21,14 +21,14 @@ func TestNew(t *testing.T) {
 		}
 	})
 
-	t.Run("Should execute eviction callback", func(t *testing.T) {
+	t.Run("Should invoke the OnEvict callback", func(t *testing.T) {
 		key := "123"
 		msgChan := make(chan string)
 
 		c, _ := New(&Config{
 			Evict: 20 * time.Millisecond,
-			OnEvict: func(key, value interface{}) {
-				msgChan <- key.(string)
+			OnEvict: func(key string, value interface{}) {
+				msgChan <- key
 			},
 		})
 
@@ -36,6 +36,41 @@ func TestNew(t *testing.T) {
 
 		o := <-msgChan
 		if o != key {
+			t.Fail()
+		}
+	})
+
+	t.Run("Should invoke the OnHit callback", func(t *testing.T) {
+		key := "123"
+		gotKey := ""
+
+		cc, _ := New(&Config{
+			OnHit: func(k string, v interface{}) {
+				gotKey = k
+			},
+		})
+
+		cc.Set(key, "abc", 0)
+		_, _ = cc.Get(key)
+
+		if gotKey != key {
+			t.Fail()
+		}
+	})
+
+	t.Run("Should invoke the OnMiss callback", func(t *testing.T) {
+		key := "123"
+		gotKey := ""
+
+		cc, _ := New(&Config{
+			OnMiss: func(k string) {
+				gotKey = k
+			},
+		})
+
+		_, _ = cc.Get(key)
+
+		if gotKey != key {
 			t.Fail()
 		}
 	})

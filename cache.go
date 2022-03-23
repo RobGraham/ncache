@@ -17,6 +17,10 @@ type Cache struct {
 	entries *sync.Map
 	// Callback when cache is evicted/deleted
 	onEvict func(k string, v interface{})
+	// Callback when cache is found
+	onHit func(k string, v interface{})
+	// Callback when cache is not found
+	onMiss func(k string)
 	// Evict interval timer
 	evict time.Duration
 
@@ -31,9 +35,12 @@ type Config struct {
 	// of stale cache entries. If not passed, or set to
 	// 0, there is no eviction policy
 	Evict time.Duration
-	// Optional callback to be executed when cache entries
-	// are evicted or deleted
-	OnEvict func(key, value interface{})
+	// Optional callback when cache entries are evicted or deleted
+	OnEvict func(key string, value interface{})
+	// Optional callback when cache is found
+	OnHit func(key string, value interface{})
+	// Optional callback when cache is not found
+	OnMiss func(key string)
 }
 
 // New returns an instance of `Cache` and any configuration errors
@@ -53,7 +60,21 @@ func New(config *Config) (*Cache, error) {
 		}
 	}
 
-	go cache.evictor()
+	cache.onHit = func(k string, v interface{}) {
+		if config.OnHit != nil {
+			config.OnHit(k, v)
+		}
+	}
+
+	cache.onMiss = func(k string) {
+		if config.OnMiss != nil {
+			config.OnMiss(k)
+		}
+	}
+
+	if config.Evict > 0 {
+		go cache.evictor()
+	}
 
 	return cache, nil
 }
@@ -90,6 +111,7 @@ func (c *Cache) Set(k string, v interface{}, ttl time.Duration) {
 func (c *Cache) Get(k string) (interface{}, bool) {
 	v, found := c.entries.Load(k)
 	if !found {
+		c.onMiss(k)
 		return nil, false
 	}
 
@@ -97,10 +119,12 @@ func (c *Cache) Get(k string) (interface{}, bool) {
 
 	if entry.expiration > 0 {
 		if time.Now().UnixNano() > entry.expiration {
+			c.onMiss(k)
 			return nil, false
 		}
 	}
 
+	c.onHit(k, entry)
 	return entry.value, true
 }
 
